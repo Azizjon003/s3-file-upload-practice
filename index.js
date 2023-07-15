@@ -1,50 +1,41 @@
 require("dotenv").config();
 const express = require("express");
 const app = express();
-const fileUpload = require("express-fileupload");
+
 const port = process.env.PORT || 4000;
 const AWS = require("aws-sdk");
+const { uploadFile, uploadFileToS3 } = require("./upload");
 
-const s3 = new AWS.S3({
-  endpoint: process.env.AWS_ENDPOINT,
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  s3BucketEndpoint: true,
-});
 app.use(
-  fileUpload({
-    createParentPath: true,
+  express.json({
+    limit: "10mb",
   })
 );
-// Handle files
-app.post("/upload", function (request, response) {
-  const file = request?.files?.["fileToUpload"] || null;
 
-  // Return if the request doesn't contain the file
-  if (!file) return response.sendStatus(400);
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: "10mb",
+  })
+);
+app.post("/upload", uploadFile, async (req, res) => {
+  const fileName = await uploadFileToS3(req);
 
-  // Destructure the content of the file object
-  const { name, mimetype, size, data } = file;
-  const fileContent = Buffer.from(data, " ");
+  let html = `
+  <html>
+    <head>
+      <title>File Upload</title>
+    </head>
+    <body>
 
-  /* Add security checks (e.g. max size) here */
+      <h1>File Upload</h1>
+      <img src="${fileName}"  alt = "upload file"/>
 
-  s3.putObject(
-    {
-      Body: fileContent, // The actual file content
-      Bucket: process.env.AWS_BUCKET_NAME, // The name of the bucket
-      Key: name, // The name of the file
-    },
-    function (err, data) {
-      if (err) {
-        response.sendStatus(500);
-      } else {
-        response.status(200).json({
-          data,
-        });
-      }
-    }
-  );
+    </body>
+  </html>
+  `;
+
+  res.send(html);
 });
 
 app.get("/", (req, res) => {
@@ -61,7 +52,6 @@ app.get("/list", function (request, response) {
       if (err) {
         response.sendStatus(500);
       } else {
-        // Return the list ("Contents") as JSON
         response.json(data.Contents);
       }
     }
